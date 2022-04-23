@@ -25,6 +25,10 @@ const (
 	timeout         = 10 * time.Second
 )
 
+var (
+	validate = validator.New()
+)
+
 type Config struct {
 	Addr string
 	RDS  *sql.DB
@@ -45,11 +49,7 @@ func Run(ctx context.Context, c Config) (err error) {
 	srv.Get(endpointHealth, health())
 	srv.Get(endpointMetrics, metrics())
 
-	r := router{
-		Router:   srv,
-		config:   c,
-		validate: validator.New(),
-	}
+	r := router{Router: srv, config: c}
 	r.setup()
 
 	listen := func() error {
@@ -105,7 +105,7 @@ func handleError(c *fiber.Ctx, cause error) error {
 			status = errors.InvalidArgument
 		case http.StatusNotFound:
 			status = errors.NotFound
-		// Handle more codes
+		// TODO: Handle more codes...
 		default:
 			status = errors.Unknown
 		}
@@ -137,8 +137,6 @@ func handleError(c *fiber.Ctx, cause error) error {
 }
 
 func handler[Request any, Response any](h func(context.Context, Request) (Response, error)) fiber.Handler {
-	validate := validator.New()
-
 	return func(c *fiber.Ctx) (err error) {
 		var (
 			req Request
@@ -147,6 +145,7 @@ func handler[Request any, Response any](h func(context.Context, Request) (Respon
 		if err = c.QueryParser(&req); err != nil {
 			return
 		}
+		// TODO: More parsers here...
 		if err = validate.Struct(req); err != nil {
 			return
 		}
