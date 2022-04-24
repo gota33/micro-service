@@ -21,6 +21,7 @@ type User struct {
 	jwt.StandardClaims
 	Authorization string `json:"-"`
 	Nick          string `json:"nick,omitempty"`
+	// TODO: More user fields
 }
 
 func (u *User) FromJWT(str string) (err error) {
