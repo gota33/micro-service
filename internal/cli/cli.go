@@ -1,6 +1,8 @@
 package cli
 
 import (
+	"context"
+	"os"
 	"unicode"
 
 	"github.com/gota33/initializr"
@@ -20,7 +22,7 @@ var (
 	flagHttp      = flagName[string]("http")
 	flagConfigUrl = flagName[string]("config-url")
 
-	CLI = &App{
+	cli = &App{
 		Name:    AppName,
 		Version: Version,
 		Flags: []Flag{
@@ -94,4 +96,8 @@ func runServer(c *Context) (err error) {
 	}
 	config.Addr = flagHttp.Get(c)
 	return server.Run(c.Context, config)
+}
+
+func Run(ctx context.Context) (err error) {
+	return cli.RunContext(ctx, os.Args)
 }
