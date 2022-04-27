@@ -1,18 +1,28 @@
 package cli
 
 import (
+	"bytes"
 	"context"
+	_ "embed"
 	"os"
 	"unicode"
 
 	"github.com/gota33/initializr"
 	"github.com/sirupsen/logrus"
 	. "github.com/urfave/cli/v2"
-	initmysql "server/internal/cli/config/mysql/v1"
+	initsqlite "server/internal/cli/config/sqlite/v1"
 	"server/internal/server"
 )
 
 const EnvPrefix = "APP_"
+
+var (
+	//go:embed config.json
+	defaultConfig []byte
+
+	//go:embed init.sql
+	initSql string
+)
 
 var (
 	AppName = "app"
@@ -86,14 +96,23 @@ func runServer(c *Context) (err error) {
 		closeRDS func()
 	)
 	if configUrl := flagConfigUrl.Get(c); configUrl != "" {
-		if res, err = initializr.FromJsonRemote(configUrl); err != nil {
-			return
-		}
-		if config.RDS, closeRDS, err = initmysql.New(res, "rds"); err != nil {
-			return
-		}
-		defer closeRDS()
+		res, err = initializr.FromJsonRemote(configUrl)
+	} else {
+		res, err = initializr.FromJson(bytes.NewReader(defaultConfig))
 	}
+	if err != nil {
+		return
+	}
+	if config.RDS, closeRDS, err = initsqlite.New(res, "sqlite"); err != nil {
+		return
+	}
+
+	defer closeRDS()
+
+	if _, err = config.RDS.ExecContext(c.Context, initSql); err != nil {
+		return
+	}
+
 	config.Addr = flagHttp.Get(c)
 	return server.Run(c.Context, config)
 }

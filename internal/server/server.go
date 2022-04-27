@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"reflect"
 	"time"
 
 	"github.com/go-playground/validator/v10"
@@ -14,6 +15,7 @@ import (
 	"github.com/gofiber/fiber/v2/middleware/logger"
 	"github.com/gota33/errors"
 	"github.com/gota33/initializr"
+	"github.com/mitchellh/mapstructure"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 	"server/internal/service/auth"
@@ -142,7 +144,13 @@ func handler[Request any, Response any](h func(context.Context, Request) (Respon
 			req Request
 			res Response
 		)
+		if err = c.BodyParser(&req); err != nil && !errors.Is(err, fiber.ErrUnprocessableEntity) {
+			return
+		}
 		if err = c.QueryParser(&req); err != nil {
+			return
+		}
+		if err = paramParser(c, &req); err != nil {
 			return
 		}
 		// TODO: More parsers here...
@@ -152,6 +160,47 @@ func handler[Request any, Response any](h func(context.Context, Request) (Respon
 		if res, err = h(c.UserContext(), req); err != nil {
 			return
 		}
-		return c.JSON(res)
+
+		var temp interface{} = res
+		switch v := temp.(type) {
+		case int:
+			return c.SendStatus(v)
+		default:
+			return c.JSON(res)
+		}
 	}
+}
+
+func paramParser(c *fiber.Ctx, req any) (err error) {
+	const tagName = "param"
+
+	keys := make([]string, 0)
+	t := reflect.TypeOf(req).Elem()
+	for i := 0; i < t.NumField(); i++ {
+		f := t.Field(i)
+		if v := f.Tag.Get(tagName); v != "" {
+			keys = append(keys, v)
+		}
+	}
+
+	if len(keys) == 0 {
+		return
+	}
+
+	var (
+		decoder *mapstructure.Decoder
+		config  = &mapstructure.DecoderConfig{
+			TagName: tagName,
+			Result:  req,
+		}
+	)
+	if decoder, err = mapstructure.NewDecoder(config); err != nil {
+		return
+	}
+
+	params := make(map[string]any, len(keys))
+	for _, key := range keys {
+		params[key] = c.Params(key)
+	}
+	return decoder.Decode(params)
 }

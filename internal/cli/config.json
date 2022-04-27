@@ -1,0 +1,8 @@
+{
+  "app": {
+    "name": "demo"
+  },
+  "sqlite": {
+    "dsn": "./demo.db"
+  }
+}
