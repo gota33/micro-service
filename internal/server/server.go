@@ -19,16 +19,13 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/sirupsen/logrus"
 	"server/internal/service/auth"
+	"server/internal/service/entity"
 )
 
 const (
 	endpointHealth  = "healthz"
 	endpointMetrics = "metrics"
 	timeout         = 10 * time.Second
-)
-
-var (
-	validate = validator.New()
 )
 
 type Config struct {
@@ -154,7 +151,7 @@ func handler[Request any, Response any](h func(context.Context, Request) (Respon
 			return
 		}
 		// TODO: More parsers here...
-		if err = validate.Struct(req); err != nil {
+		if err = doValidate(c, req); err != nil {
 			return
 		}
 		if res, err = h(c.UserContext(), req); err != nil {
@@ -169,6 +166,13 @@ func handler[Request any, Response any](h func(context.Context, Request) (Respon
 			return c.JSON(res)
 		}
 	}
+}
+
+func doValidate(c *fiber.Ctx, req any) (err error) {
+	if c.Method() != http.MethodPatch {
+		return entity.Validate.Struct(req)
+	}
+	return
 }
 
 func paramParser(c *fiber.Ctx, req any) (err error) {

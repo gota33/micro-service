@@ -5,15 +5,16 @@ import (
 	"database/sql"
 	"net/http"
 
+	"github.com/gota33/errors"
 	"server/internal/service/entity"
 )
 
 type Service struct {
-	dao dao
+	dao entity.Dao[Entity]
 }
 
 func New(db *sql.DB) Service {
-	return Service{dao: dao{db}}
+	return Service{dao: newDao(db)}
 }
 
 type GetRequest struct {
@@ -24,12 +25,8 @@ func (srv Service) Get(ctx context.Context, req GetRequest) (res Entity, err err
 	return srv.dao.Get(ctx, req.ItemID)
 }
 
-type CreateRequest struct {
-	Entity
-}
-
-func (srv Service) Create(ctx context.Context, req CreateRequest) (res Entity, err error) {
-	return srv.dao.Create(ctx, req.Entity)
+func (srv Service) Create(ctx context.Context, entity Entity) (res Entity, err error) {
+	return srv.dao.Create(ctx, entity)
 }
 
 type ListRequest struct {
@@ -42,17 +39,32 @@ type ListResponse struct {
 }
 
 func (srv Service) List(ctx context.Context, req ListRequest) (res ListResponse, err error) {
-	return srv.dao.List(ctx, req)
+	// Change default pageSize if needed
+	// req.FallbackPageSize = 10
+
+	var raw entity.ListResponse[Entity]
+	if raw, err = srv.dao.List(ctx, req); err != nil {
+		return
+	}
+
+	res.Items = raw.Items
+	res.ListResponseFragment = raw.ListResponseFragment
+	return
 }
 
 type UpdateRequest struct {
-	ItemID     string           `param:"itemID"`
-	UpdateMask entity.FieldMask `json:"updateMask"`
-	Item       Entity           `json:"item"`
+	entity.UpdateRequestFragment
+	ItemID string `param:"itemID"`
+	Item   Entity `json:"item"`
 }
 
 func (srv Service) Update(ctx context.Context, req UpdateRequest) (res Entity, err error) {
-	return srv.dao.Update(ctx, req)
+	uReq := entity.UpdateRequest[Entity]{
+		UpdateRequestFragment: req.UpdateRequestFragment,
+		ID:                    req.ItemID,
+		Entity:                req.Item,
+	}
+	return srv.dao.Update(ctx, uReq)
 }
 
 type DeleteRequest struct {
@@ -60,7 +72,14 @@ type DeleteRequest struct {
 }
 
 func (srv Service) Delete(ctx context.Context, req DeleteRequest) (code int, err error) {
-	if err = srv.dao.Delete(ctx, req); err == nil {
+	dReq := entity.DeleteRequest{
+		ID: req.ItemID,
+		ResourceInfo: errors.ResourceInfo{
+			ResourceType: "item",
+			ResourceName: "item/" + req.ItemID,
+		},
+	}
+	if err = srv.dao.Delete(ctx, dReq); err == nil {
 		code = http.StatusNoContent
 	}
 	return

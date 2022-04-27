@@ -4,7 +4,11 @@ import (
 	"encoding/json"
 	"io"
 	"strings"
+
+	"github.com/go-playground/validator/v10"
 )
+
+var Validate = validator.New()
 
 type FieldMask struct {
 	Paths []string `json:"paths,omitempty"`
@@ -37,8 +41,30 @@ func (mask FieldMask) ToMap(e any) (m map[string]any, err error) {
 }
 
 type ListRequestFragment struct {
-	PageSize  int    `query:"pageSize"`
-	PageToken string `query:"pageToken"`
+	PageSize          int    `query:"pageSize"`
+	PageToken         string `query:"pageToken"`
+	FallbackPageSize  int
+	FallbackPageToken string
+}
+
+func (r ListRequestFragment) GetPageSize() int {
+	if r.PageSize > 0 {
+		return r.PageSize
+	}
+	if r.FallbackPageSize > 0 {
+		return r.FallbackPageSize
+	}
+	return 20
+}
+
+func (r ListRequestFragment) GetPageToken() string {
+	if r.PageToken != "" {
+		return r.PageToken
+	}
+	if r.FallbackPageToken != "" {
+		return r.FallbackPageToken
+	}
+	return "0"
 }
 
 type ListResponseFragment struct {

@@ -1,16 +1,12 @@
 package item
 
 import (
-	"context"
 	"database/sql"
 	"strconv"
 	"time"
 
-	"github.com/gota33/errors"
-	. "server/internal/service/entity"
+	"server/internal/service/entity"
 )
-
-const allFields = "id, title, price, num, create_time"
 
 type Entity struct {
 	ID         int64     `json:"id,string"`
@@ -20,121 +16,23 @@ type Entity struct {
 	CreateTime time.Time `json:"createTime"`
 }
 
-func (e *Entity) scanAllFields(row Scanner) error {
-	return row.Scan(&e.ID, &e.Title, &e.Price, &e.Num, &e.CreateTime)
+func (e Entity) GetID() string {
+	return strconv.FormatInt(e.ID, 10)
 }
 
-type dao struct {
-	db SQLCmd
+func (e Entity) InsertValues() []any {
+	return []any{e.Title, e.Price, e.Num}
 }
 
-func (d dao) Get(ctx context.Context, id string) (e Entity, err error) {
-	const script = "select " + allFields + " from item where id = ? limit 1"
-	row := d.db.QueryRowContext(ctx, script, id)
-	err = e.scanAllFields(row)
-	return
-}
-
-func (d dao) Create(ctx context.Context, e Entity) (next Entity, err error) {
-	const script = "insert into item (title, price, num) values (?, ?, ?)"
-	var (
-		tx     SQLCmd
-		finish func(error) error
-		sr     sql.Result
-		id     int64
-	)
-	if tx, finish, err = BeginTx(ctx, d.db, nil); err != nil {
-		return
-	}
-	defer func() { err = finish(err) }()
-
-	if sr, err = tx.ExecContext(ctx, script, e.Title, e.Price, e.Num); err != nil {
-		return
-	}
-	if id, err = sr.LastInsertId(); err != nil {
-		return
-	}
-
-	sub := dao{db: tx}
-	return sub.Get(ctx, strconv.FormatInt(id, 10))
-}
-
-func (d dao) List(ctx context.Context, req ListRequest) (res ListResponse, err error) {
-	const script = "select " + allFields + " from item where id > ? limit ?"
-
-	if req.PageSize == 0 {
-		req.PageSize = 20
-	}
-
-	if req.PageToken == "" {
-		req.PageToken = "0"
-	}
-
-	var rows *sql.Rows
-	if rows, err = d.db.QueryContext(ctx, script, req.PageToken, req.PageSize); err != nil {
-		return
-	}
-
-	defer CloseRows(rows)
-
-	for rows.Next() {
-		var e Entity
-		if err = e.scanAllFields(rows); err != nil {
+func newDao(db *sql.DB) entity.Dao[Entity] {
+	return entity.Dao[Entity]{
+		DB:           db,
+		Table:        "item",
+		AllFields:    "id, title, price, num, create_time",
+		InsertFields: "title, price, num",
+		ScanAllFields: func(row entity.Scanner) (e Entity, err error) {
+			err = row.Scan(&e.ID, &e.Title, &e.Price, &e.Num, &e.CreateTime)
 			return
-		}
-		res.Items = append(res.Items, e)
+		},
 	}
-	if err = rows.Err(); err != nil {
-		return
-	}
-
-	if size := len(res.Items); size == req.PageSize {
-		res.NextPageToken = strconv.FormatInt(res.Items[size-1].ID, 10)
-	}
-	return
-}
-
-func (d dao) Update(ctx context.Context, req UpdateRequest) (res Entity, err error) {
-	var fields map[string]any
-	if fields, err = req.UpdateMask.ToMap(req.Item); err != nil {
-		return
-	}
-	script, args := SQLUpdate("item", req.ItemID, fields)
-
-	var (
-		tx     SQLCmd
-		finish func(error) error
-	)
-	if tx, finish, err = BeginTx(ctx, d.db, nil); err != nil {
-		return
-	}
-	defer func() { err = finish(err) }()
-
-	if _, err = tx.ExecContext(ctx, script, args...); err != nil {
-		return
-	}
-
-	sub := dao{db: tx}
-	return sub.Get(ctx, req.ItemID)
-}
-
-func (d dao) Delete(ctx context.Context, req DeleteRequest) (err error) {
-	const script = "delete from item where id = ?"
-	var (
-		sr  sql.Result
-		num int64
-	)
-	if sr, err = d.db.ExecContext(ctx, script, req.ItemID); err != nil {
-		return
-	}
-	if num, err = sr.RowsAffected(); err != nil {
-		return
-	}
-	if num == 0 {
-		err = errors.WithNotFound(errors.NotFound, errors.ResourceInfo{
-			ResourceType: "item",
-			ResourceName: "items/" + req.ItemID,
-		})
-	}
-	return
 }
