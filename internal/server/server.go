@@ -161,7 +161,7 @@ func handler[Request any, Response any](h func(context.Context, Request) (Respon
 			return
 		}
 
-		var temp interface{} = res
+		var temp any = res
 		switch v := temp.(type) {
 		case int:
 			return c.SendStatus(v)

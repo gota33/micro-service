@@ -25,8 +25,6 @@ func (srv Service) Get(ctx context.Context, req GetRequest) (res Entity, err err
 }
 
 type CreateRequest struct {
-	Parent     string
-	CustomerID string
 	Entity
 }
 
