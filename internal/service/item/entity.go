@@ -10,15 +10,13 @@ import (
 	. "server/internal/service/entity"
 )
 
-const (
-	allFields = "id, title, price, num, create_time"
-)
+const allFields = "id, title, price, num, create_time"
 
 type Entity struct {
 	ID         int64     `json:"id,string"`
-	Title      string    `json:"title"`
-	Price      float64   `json:"price"`
-	Num        int64     `json:"num"`
+	Title      string    `json:"title" validate:"required"`
+	Price      float64   `json:"price" validate:"required,min=0"`
+	Num        int64     `json:"num" validate:"required,min=0"`
 	CreateTime time.Time `json:"createTime"`
 }
 
@@ -40,16 +38,15 @@ func (d dao) Get(ctx context.Context, id string) (e Entity, err error) {
 func (d dao) Create(ctx context.Context, e Entity) (next Entity, err error) {
 	const script = "insert into item (title, price, num) values (?, ?, ?)"
 	var (
-		tx SQLTx
-		sr sql.Result
-		id int64
+		tx     SQLCmd
+		finish func(error) error
+		sr     sql.Result
+		id     int64
 	)
-	if tx, err = BeginTx(ctx, d.db, nil); err != nil {
+	if tx, finish, err = BeginTx(ctx, d.db, nil); err != nil {
 		return
 	}
-	defer func() { err = FinishTx(tx, err) }()
-
-	sub := dao{db: tx}
+	defer func() { err = finish(err) }()
 
 	if sr, err = tx.ExecContext(ctx, script, e.Title, e.Price, e.Num); err != nil {
 		return
@@ -57,10 +54,9 @@ func (d dao) Create(ctx context.Context, e Entity) (next Entity, err error) {
 	if id, err = sr.LastInsertId(); err != nil {
 		return
 	}
-	if next, err = sub.Get(ctx, strconv.FormatInt(id, 10)); err != nil {
-		return
-	}
-	return
+
+	sub := dao{db: tx}
+	return sub.Get(ctx, strconv.FormatInt(id, 10))
 }
 
 func (d dao) List(ctx context.Context, req ListRequest) (res ListResponse, err error) {
@@ -105,21 +101,21 @@ func (d dao) Update(ctx context.Context, req UpdateRequest) (res Entity, err err
 	}
 	script, args := SQLUpdate("item", req.ItemID, fields)
 
-	var tx SQLTx
-	if tx, err = BeginTx(ctx, d.db, nil); err != nil {
+	var (
+		tx     SQLCmd
+		finish func(error) error
+	)
+	if tx, finish, err = BeginTx(ctx, d.db, nil); err != nil {
 		return
 	}
-	defer func() { err = FinishTx(tx, err) }()
-
-	sub := dao{db: tx}
+	defer func() { err = finish(err) }()
 
 	if _, err = tx.ExecContext(ctx, script, args...); err != nil {
 		return
 	}
-	if res, err = sub.Get(ctx, req.ItemID); err != nil {
-		return
-	}
-	return
+
+	sub := dao{db: tx}
+	return sub.Get(ctx, req.ItemID)
 }
 
 func (d dao) Delete(ctx context.Context, req DeleteRequest) (err error) {
@@ -142,35 +138,3 @@ func (d dao) Delete(ctx context.Context, req DeleteRequest) (err error) {
 	}
 	return
 }
-
-/*
-func (d dao) OldCreate(ctx context.Context, e *Entity) (err error) {
-	var (
-		tx *sql.Tx
-		sr sql.Result
-	)
-	if tx, err = d.db.BeginTx(ctx, &sql.TxOptions{}); err != nil {
-		return
-	}
-
-	defer func() {
-		if err != nil {
-			if rollbackErr := tx.Rollback(); rollbackErr != nil {
-				logrus.WithError(rollbackErr).Warnf("Rollback error")
-			} else {
-				err = tx.Commit()
-			}
-		}
-	}()
-
-	if sr, err = tx.ExecContext(ctx, sqlCreate, e.Title, e.Price, e.Num); err != nil {
-		return
-	}
-	if e.ID, err = sr.LastInsertId(); err != nil {
-		return
-	}
-	row := tx.QueryRowContext(ctx, sqlGet)
-	err = e.scanAllFields(row)
-	return
-}
-*/

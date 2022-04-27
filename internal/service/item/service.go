@@ -63,7 +63,7 @@ type DeleteRequest struct {
 
 func (srv Service) Delete(ctx context.Context, req DeleteRequest) (code int, err error) {
 	if err = srv.dao.Delete(ctx, req); err == nil {
-		code = http.StatusAccepted
+		code = http.StatusNoContent
 	}
 	return
 }
