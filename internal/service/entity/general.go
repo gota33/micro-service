@@ -3,9 +3,7 @@ package entity
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"strconv"
-	"strings"
 	"unicode"
 
 	"github.com/gota33/errors"
@@ -19,8 +17,10 @@ type Entity interface {
 type Dao[e Entity] struct {
 	DB            SQLCmd
 	Table         string
-	AllFields     string
-	InsertFields  string
+	SqlGet        string
+	SqlCreate     string
+	SqlList       string
+	SqlDelete     string
 	ScanAllFields func(row Scanner) (e, error)
 }
 
@@ -28,33 +28,32 @@ func (d Dao[Entity]) WithDB(db SQLCmd) Dao[Entity] {
 	return Dao[Entity]{
 		DB:            db,
 		Table:         d.Table,
-		AllFields:     d.AllFields,
-		InsertFields:  d.InsertFields,
+		SqlGet:        d.SqlGet,
+		SqlCreate:     d.SqlCreate,
+		SqlList:       d.SqlList,
+		SqlDelete:     d.SqlDelete,
 		ScanAllFields: d.ScanAllFields,
 	}
 }
 
 func (d Dao[Entity]) Get(ctx context.Context, id string) (e Entity, err error) {
-	script := fmt.Sprintf("select %s from %s where id = ? limit 1", d.AllFields, d.Table)
-	row := d.DB.QueryRowContext(ctx, script, id)
+	row := d.DB.QueryRowContext(ctx, d.SqlGet, id)
 	return d.ScanAllFields(row)
 }
 
 func (d Dao[Entity]) Create(ctx context.Context, e Entity) (next Entity, err error) {
 	var (
-		holders = "?" + strings.Repeat(",?", strings.Count(d.InsertFields, ","))
-		script  = fmt.Sprintf("insert into %s (%s) values (%s)", d.Table, d.InsertFields, holders)
-		tx      SQLCmd
-		finish  func(error) error
-		sr      sql.Result
-		id      int64
+		tx     SQLCmd
+		finish func(error) error
+		sr     sql.Result
+		id     int64
 	)
 	if tx, finish, err = BeginTx(ctx, d.DB, nil); err != nil {
 		return
 	}
 	defer func() { err = finish(err) }()
 
-	if sr, err = tx.ExecContext(ctx, script, e.InsertValues()...); err != nil {
+	if sr, err = tx.ExecContext(ctx, d.SqlCreate, e.InsertValues()...); err != nil {
 		return
 	}
 	if id, err = sr.LastInsertId(); err != nil {
@@ -76,11 +75,8 @@ type ListResponse[e Entity] struct {
 }
 
 func (d Dao[Entity]) List(ctx context.Context, req ListRequest) (res ListResponse[Entity], err error) {
-	var (
-		script = fmt.Sprintf("select %s from %s where id > ? limit ?", d.AllFields, d.Table)
-		rows   *sql.Rows
-	)
-	if rows, err = d.DB.QueryContext(ctx, script,
+	var rows *sql.Rows
+	if rows, err = d.DB.QueryContext(ctx, d.SqlList,
 		req.GetPageToken(), req.GetPageSize()); err != nil {
 		return
 	}
@@ -160,11 +156,10 @@ type DeleteRequest struct {
 
 func (d Dao[Entity]) Delete(ctx context.Context, req DeleteRequest) (err error) {
 	var (
-		script = fmt.Sprintf("delete from %s where id = ?", d.Table)
-		sr     sql.Result
-		num    int64
+		sr  sql.Result
+		num int64
 	)
-	if sr, err = d.DB.ExecContext(ctx, script, req.ID); err != nil {
+	if sr, err = d.DB.ExecContext(ctx, d.SqlDelete, req.ID); err != nil {
 		return
 	}
 	if num, err = sr.RowsAffected(); err != nil {
