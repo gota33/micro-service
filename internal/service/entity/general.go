@@ -111,7 +111,12 @@ type UpdateRequest[E Entity] struct {
 }
 
 func (req UpdateRequest[Entity]) validate() (err error) {
-	names := make([]string, len(req.UpdateMask.Paths))
+	size := len(req.UpdateMask.Paths)
+	if size == 0 {
+		return Validate.Struct(req.Entity)
+	}
+
+	names := make([]string, size)
 	for i, path := range req.UpdateMask.Paths {
 		runes := []rune(path)
 		runes[0] = unicode.ToUpper(runes[0])
