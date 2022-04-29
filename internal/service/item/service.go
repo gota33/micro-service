@@ -5,7 +5,6 @@ import (
 	"database/sql"
 	"net/http"
 
-	"github.com/gota33/errors"
 	"server/internal/service/entity"
 )
 
@@ -72,14 +71,7 @@ type DeleteRequest struct {
 }
 
 func (srv Service) Delete(ctx context.Context, req DeleteRequest) (code int, err error) {
-	dReq := entity.DeleteRequest{
-		ID: req.ItemID,
-		ResourceInfo: errors.ResourceInfo{
-			ResourceType: "item",
-			ResourceName: "item/" + req.ItemID,
-		},
-	}
-	if err = srv.dao.Delete(ctx, dReq); err == nil {
+	if err = srv.dao.Delete(ctx, req.ItemID); err == nil {
 		code = http.StatusNoContent
 	}
 	return

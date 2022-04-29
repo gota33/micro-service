@@ -16,6 +16,7 @@ type Entity interface {
 
 type Dao[e Entity] struct {
 	DB            SQLCmd
+	ResourceType  string
 	Table         string
 	SqlGet        string
 	SqlCreate     string
@@ -27,6 +28,7 @@ type Dao[e Entity] struct {
 func (d Dao[Entity]) WithDB(db SQLCmd) Dao[Entity] {
 	return Dao[Entity]{
 		DB:            db,
+		ResourceType:  d.ResourceType,
 		Table:         d.Table,
 		SqlGet:        d.SqlGet,
 		SqlCreate:     d.SqlCreate,
@@ -36,9 +38,19 @@ func (d Dao[Entity]) WithDB(db SQLCmd) Dao[Entity] {
 	}
 }
 
+func (d Dao[Entity]) notFound(id string, cause error) error {
+	return errors.WithNotFound(cause, errors.ResourceInfo{
+		ResourceType: d.ResourceType,
+		ResourceName: d.ResourceType + "/" + id,
+	})
+}
+
 func (d Dao[Entity]) Get(ctx context.Context, id string) (e Entity, err error) {
 	row := d.DB.QueryRowContext(ctx, d.SqlGet, id)
-	return d.ScanAllFields(row)
+	if e, err = d.ScanAllFields(row); err != nil {
+		err = d.notFound(id, err)
+	}
+	return
 }
 
 func (d Dao[Entity]) Create(ctx context.Context, e Entity) (next Entity, err error) {
@@ -149,24 +161,19 @@ func (d Dao[Entity]) Update(ctx context.Context, req UpdateRequest[Entity]) (res
 	return sub.Get(ctx, req.ID)
 }
 
-type DeleteRequest struct {
-	errors.ResourceInfo
-	ID string
-}
-
-func (d Dao[Entity]) Delete(ctx context.Context, req DeleteRequest) (err error) {
+func (d Dao[Entity]) Delete(ctx context.Context, id string) (err error) {
 	var (
 		sr  sql.Result
 		num int64
 	)
-	if sr, err = d.DB.ExecContext(ctx, d.SqlDelete, req.ID); err != nil {
+	if sr, err = d.DB.ExecContext(ctx, d.SqlDelete, id); err != nil {
 		return
 	}
 	if num, err = sr.RowsAffected(); err != nil {
 		return
 	}
 	if num == 0 {
-		err = errors.WithNotFound(errors.NotFound, req.ResourceInfo)
+		err = d.notFound(id, errors.NotFound)
 	}
 	return
 }
